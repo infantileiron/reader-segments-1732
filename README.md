@@ -33,7 +33,9 @@ Python先用StandardScaler的总体均值和总体标准差生成z=(x−mean)/st
 
 中心用scaler.inverse_transform还原为原始单位；画像另统计群内三个原始维度的均值（即使某维未选入聚类也展示其描述均值）。群号按逆变换中心排序，仅保证同一输入和seed可复核，不跨版本等价。散点图展示前两个所选标准化维度，聚类仍用所有选择维度，二维重叠不代表同群。
 
-样本数≤k、所选常量列、唯一特征点少于k、实际群数不足、缺失/非有限值均明确失败；不静默补值、降k或删除样本。输入验证422，重复会员编号409，队列故障503。任务失败保存failed和错误原因，修订后新建版本。创建时冻结输入，worker保存成员、中心、画像、轮廓系数、scaler参数、seed和checksum。触达草案保存版本成员副本，不随后续档案修改漂移。分群只描述行为相似性，不判断会员价值或因果关系。
+样本数≤k、所选常量列、唯一特征点少于k、实际群数不足、缺失/非有限值均明确失败；不静默补值、降k或删除样本。输入验证422，重复会员编号409，队列故障503（任务已入档，队列恢复后自动计算）。任务失败保存failed和错误原因，修订后新建版本。创建时冻结输入，worker保存成员、中心、画像、轮廓系数、scaler参数、seed和checksum。触达草案保存版本成员副本，不随后续档案修改漂移。分群只描述行为相似性，不判断会员价值或因果关系。
+
+中断恢复与发布一致性：worker用条件更新原子认领任务并写入run_id围栏令牌，重复投递或多进程认领同一版本只有一个执行者；running租约（SEGMENT_LEASE_SECONDS，默认120秒）过期后由启动恢复或周期巡检（SEGMENT_SWEEP_SECONDS）重新入队，始终按发起时冻结的档案快照重算，发布前校验群内人数合计等于档案数。成员文件先写临时文件再原子改名为 `segment-<版本>-<run_id>.json`，随后按run_id条件提交done；过期执行者的提交被拒并丢弃其产物，不能覆盖新结果。导出与触达前校验完成状态、成员文件checksum与人数合计三者一致，未完整发布返回409；done版本成员文件缺失时巡检自动按原快照重新发布，孤儿产物按宽限（SEGMENT_ORPHAN_GRACE）清理。已完成版本与已冻结名单不被回收或改写。
 
 ## 快速启动
 
@@ -46,7 +48,7 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 前端 [localhost:18206](http://localhost:18206)，后端 [localhost:19206/docs](http://localhost:19206/docs)，PostgreSQL映射17706。演示账号 `admin@demo.local`、`analyst@demo.local`、`viewer@demo.local`，密码均 `Demo123!`。seed=3107，240会员；自然键只插入缺失账号和档案，重复执行不覆盖人工修改。`SEED_DEMO=true`时启动自动执行一次，失败记录日志但不阻塞服务。
 
-五服务frontend/backend/worker/db/redis均有健康检查。backend等待数据库/Redis，worker还等待backend，frontend等待backend。worker真实消费Redis任务，心跳 `/tmp/heartbeat`；单worker启动恢复queued/running。数据库、Redis和产物用命名卷，产物位于共享 `/artifacts`。Nginx将 `/api/`转发到后端根路由。显式子网10.253.107.0/24规避当前机器默认地址池耗尽，可通过NETWORK_SUBNET调整。结束用 `docker compose down -v --remove-orphans` 清理本项目数据。
+五服务frontend/backend/worker/db/redis均有健康检查。backend等待数据库/Redis，worker还等待backend，frontend等待backend。worker真实消费Redis任务，心跳 `/tmp/heartbeat`；启动与周期巡检恢复queued/过期running，认领去重、run_id围栏、原子发布，单worker与多进程争抢均只发布一份结果。数据库、Redis和产物用命名卷，产物位于共享 `/artifacts`。Nginx将 `/api/`转发到后端根路由。显式子网10.253.107.0/24规避当前机器默认地址池耗尽，可通过NETWORK_SUBNET调整。结束用 `docker compose down -v --remove-orphans` 清理本项目数据。
 
 ## 技术、目录与本地开发
 
@@ -65,4 +67,4 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 ## 范围与证据
 
-逐条表单/API录入及完整字段修订，无CSV/Excel导入、删除、分页、在线新会员预测或自动跨版本群组对齐。触达仅站内方案与签核，不发送邮件或消息。单worker；不宣称多worker exactly-once或大规模性能。Google Fonts需联网，离线使用serif/sans-serif回退。已知差异、真实测试和截图位于源码外 `../../test-artifacts/gb-3107/`。许可证MIT，见LICENSE。
+逐条表单/API录入及完整字段修订，无CSV/Excel导入、删除、分页、在线新会员预测或自动跨版本群组对齐。触达仅站内方案与签核，不发送邮件或消息。单worker；不宣称多worker exactly-once或大规模性能。Google Fonts需联网，离线使用serif/sans-serif回退。中断恢复、并发争抢与发布一致性的回归测试在 `backend/tests/`（pytest，SQLite+内存队列，`cd backend && python -m pytest tests`）。已知差异、真实测试和截图位于源码外 `../../test-artifacts/gb-3107/`。许可证MIT，见LICENSE。

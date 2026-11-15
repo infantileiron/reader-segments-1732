@@ -134,7 +134,10 @@ CREATE TABLE public.segments (
     features json,
     state character varying(20),
     result json,
-    error text
+    error text,
+    run_id character varying(40),
+    claimed_at double precision,
+    attempts integer
 );
 
 

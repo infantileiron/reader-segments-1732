@@ -6,6 +6,9 @@ x-app: &app
     REDIS_URL: redis://redis:6379/0
     JWT_SECRET: ${JWT_SECRET:-reader-demo-change-in-production-3107}
     SEED_DEMO: ${SEED_DEMO:-true}
+    SEGMENT_LEASE_SECONDS: ${SEGMENT_LEASE_SECONDS:-120}
+    SEGMENT_SWEEP_SECONDS: ${SEGMENT_SWEEP_SECONDS:-15}
+    SEGMENT_ORPHAN_GRACE: ${SEGMENT_ORPHAN_GRACE:-600}
   volumes: [artifacts:/artifacts]
   depends_on:
     db: {condition: service_healthy}

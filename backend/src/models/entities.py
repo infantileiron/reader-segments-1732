@@ -9,6 +9,7 @@ class Reader(Base):
 class Segment(Base):
  __tablename__='segments'
  id=Column(Integer,primary_key=True);name=Column(String(100));k=Column(Integer);features=Column(JSON);state=Column(String(20),default='queued');result=Column(JSON);error=Column(Text,default='')
+ run_id=Column(String(40));claimed_at=Column(Float);attempts=Column(Integer,default=0)
 class Outreach(Base):
  __tablename__='outreaches'
  id=Column(Integer,primary_key=True);segment_id=Column(Integer,ForeignKey('segments.id'));cluster_id=Column(Integer);title=Column(String(100));note=Column(Text);members=Column(JSON);status=Column(String(20),default='draft')

@@ -8,6 +8,7 @@ from src.schemas.business import Login,ReaderInput,SegmentInput,OutreachInput
 from src.middlewares.auth import current,editor,admin
 from src.utils.security import verify,token
 from src.services.business import audit,dump
+from src.services import publishing
 from src.controllers.business import ensure_segment
 router=APIRouter()
 @router.post('/auth/login')
@@ -39,7 +40,7 @@ def segments(u=Depends(current),s=Depends(db)):return [dump(r) for r in s.query(
 def train(data:SegmentInput,u=Depends(editor),s=Depends(db)):
  rows=[dump(r) for r in s.query(Reader).order_by(Reader.id).all()];r=Segment(**data.model_dump(),result={'snapshot':rows});s.add(r);s.commit()
  try:redis.Redis.from_url(os.environ['REDIS_URL']).rpush('reader:segments',r.id)
- except redis.RedisError:r.state='failed';r.error='队列暂不可用，请稍后重试';s.commit();raise HTTPException(503,r.error)
+ except redis.RedisError:raise HTTPException(503,'队列暂不可用，任务已入档，恢复后自动计算')
  audit(s,u,'提交分群 '+str(r.id));return dump(r)
 @router.get('/segments/{i}')
 def detail(i:int,u=Depends(current),s=Depends(db)):return dump(ensure_segment(s,i))
@@ -47,6 +48,8 @@ def detail(i:int,u=Depends(current),s=Depends(db)):return dump(ensure_segment(s,
 def export(i:int,u=Depends(current),s=Depends(db)):
  r=ensure_segment(s,i)
  if r.state!='done':raise HTTPException(409,'仅成功分群可导出')
+ try:publishing.verify_published(r)
+ except publishing.PublishError as e:raise HTTPException(409,str(e))
  return Response(json.dumps(dump(r),ensure_ascii=False,indent=2),media_type='application/json',headers={'Content-Disposition':f'attachment; filename="reader-segments-{i}.json"'})
 @router.get('/outreaches')
 def outreaches(u=Depends(current),s=Depends(db)):return [dump(r) for r in s.query(Outreach).order_by(Outreach.id.desc()).all()]
@@ -54,6 +57,8 @@ def outreaches(u=Depends(current),s=Depends(db)):return [dump(r) for r in s.quer
 def outreach(data:OutreachInput,u=Depends(editor),s=Depends(db)):
  r=ensure_segment(s,data.segment_id)
  if r.state!='done':raise HTTPException(409,'分群完成后才能制定触达方案')
+ try:publishing.verify_published(r)
+ except publishing.PublishError as e:raise HTTPException(409,str(e))
  members=[m['code'] for m in r.result['members'] if m['cluster_id']==data.cluster_id]
  if not members:raise HTTPException(422,'该版本没有所选群组')
  o=Outreach(**data.model_dump(),members=members);s.add(o);s.commit();audit(s,u,'起草触达方案 '+str(o.id));return dump(o)
